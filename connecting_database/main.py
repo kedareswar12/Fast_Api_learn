@@ -1,11 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional
-import os
-from dotenv import load_dotenv
-load_dotenv()
 
-print(os.getenv("FOO"))
+
 # ---------------------------------------------------------------------------
 # CRUD APPLICATION USING FASTAPI
 # CRUD = Create, Read, Update, Delete -> the 4 basic operations any backend
