@@ -1,7 +1,7 @@
-from fastapi import FastAPI , Depends
+from fastapi import FastAPI , Depends,  HTTPException
 from pydantic import BaseModel
 from typing import Optional , List
-from sqlalchemy import session
+from sqlalchemy.orm import session
 from model1 import TodoModel
 from database import engine, SessionLocal
 
@@ -52,8 +52,7 @@ class TodoResponse(TodoBase):
   class Config:
     orm_mode = True 
     
-    
-def getdb():
+def get_db():
   db = SessionLocal()
   try:
     yield db 
@@ -67,7 +66,7 @@ def getdb():
 # GET requests are for RETRIEVING data - they should never change anything.
 # This just returns the entire "todos" list as-is. FastAPI automatically
 # converts the Python list of dicts into a JSON array in the response.
-@app.get("/todos" , response_model = list[TodoResponse])
+@app.get("/todos" , response_model=List[TodoResponse])
 def get_todos(db : session = Depends(get_db)):
   todos = db.query(TodoModel).all()
   return todos  
@@ -90,13 +89,17 @@ def get_todos(db : session = Depends(get_db)):
 # the function gives up and returns "not found" after checking just the
 # FIRST item, instead of checking the whole list. This was a real bug we
 # hit and fixed - always double check your indentation here.
-@app.get("/todos/{todo_id}")
-def get_todo(todo_id: int):
-  for todo in todos:
-    if todo['id'] == todo_id:
-      return todo
-  # this only runs if the loop finishes WITHOUT finding a match
-  return {"error": "Todo not found"}
+@app.get("/todos/{todo_id}",response_model=List[TodoResponse])
+def get_todo(todo_id: int , db : session = Depends(get_db)):
+  # for todo in todos:
+  #   if todo['id'] == todo_id:
+  #     return todo
+  # # this only runs if the loop finishes WITHOUT finding a match
+  # return {"error": "Todo not found"}
+  todo = db.query(TodoModel).filter(TodoModel.id == todo_id).first()
+  if not todo:
+      raise HTTPException(status_code=404, detail="Todo not found")
+  return todo
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +124,22 @@ def get_todo(todo_id: int):
 # completely separate routes. What you must NEVER do is define the same
 # path AND same method twice - that's what caused our earlier bug where
 # the second function became unreachable dead code.
-@app.post("/todos")
-def create_todo(todo: Todo):
-  todos.append(todo.dict())
-  return todos[-1]   # return the item we just added (last item in the list)
 
+
+
+# @app.post("/todos")
+# def create_todo(todo: TodoBase):
+#   todos.append(todo.dict())
+#   return todos[-1]   # return the item we just added (last item in the list)
+
+
+@app.post("/todos", response_model=TodoResponse)
+def create_todo(todo: TodoCreate, db: session = Depends(get_db)):
+    new_todo = TodoModel(**todo.dict())
+    db.add(new_todo)
+    db.commit()
+    db.refresh(new_todo)
+    return new_todo
 
 # ---------------------------------------------------------------------------
 # DELETE -> DELETE /todos/{todo_id}
@@ -142,13 +156,21 @@ def create_todo(todo: Todo):
 # the "not found" return is properly OUTSIDE the loop, only reached if
 # nothing matched after checking every item. Use this as your reference
 # for how get_todo() should also be structured.
+
+
 @app.delete("/todos/{todo_id}")
-def delete_todo(todo_id: int):
-  for todo in todos:
-    if todo['id'] == todo_id:
-      todos.remove(todo)
-      return {"Message": "todo deleted successfully"}
-  return {"error": "Todo not found"}
+def delete_todo(todo_id: int, db: session = Depends(get_db)):
+  # for todo in todos:
+  #   if todo['id'] == todo_id:
+  #     todos.remove(todo)
+  #     return {"Message": "todo deleted successfully"}
+  # return {"error": "Todo not found"}
+  todo = db.query(TodoModel).filter(TodoModel.id == todo_id).first()
+  if not todo:
+    raise HTTPException(status_code=404, detail="Todo not found")
+  db.delete(todo)
+  db.commit()
+  return {"message": "todo deleted successfully"}
 
 
 # ---------------------------------------------------------------------------
@@ -182,13 +204,23 @@ def delete_todo(todo_id: int):
 # when you hit a 500 - the error message itself tells you exactly which
 # line and which mistake caused it.
 @app.put("/todos/{todo_id}")
-def update_todos(todo_id: int, updated_todo: Todo):
-  for index, todo in enumerate(todos):
-    if todo['id'] == todo_id:
-      todos[index] = updated_todo.model_dump()
-      return todos[index]
-  return {"error": "Todo not found"}
+# def update_todos(todo_id: int, updated_todo: Todo):
+#   for index, todo in enumerate(todos):
+#     if todo['id'] == todo_id:
+#       todos[index] = updated_todo.model_dump()
+#       return todos[index]
+#   return {"error": "Todo not found"}
+def update_todo(todo_id: int, updated_todo: TodoUpdate, db: session = Depends(get_db)):
+    todo = db.query(TodoModel).filter(TodoModel.id == todo_id).first()
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
 
+    for key, value in updated_todo.dict().items():
+        setattr(todo, key, value)
+
+    db.commit()
+    db.refresh(todo)
+    return todo
 
 # ---------------------------------------------------------------------------
 # QUICK REFERENCE - HTTP METHODS USED IN THIS FILE
