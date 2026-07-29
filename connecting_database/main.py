@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI , Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional , List
+from sqlalchemy import session
+from model1 import TodoModel
+from database import engine, SessionLocal
 
 
 # ---------------------------------------------------------------------------
@@ -13,10 +16,11 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 app = FastAPI()
+TodoModel.metadata.create_all(bind = engine)  # to create all the tables in the database 
 
 # our "fake database" - just a plain Python list that lives in memory
 # each item inside it will be a dictionary, e.g. {"id": 1, "title": "...", ...}
-todos = []
+# todos = []
 
 
 # ---------------------------------------------------------------------------
@@ -31,12 +35,31 @@ todos = []
 # Optional[str] = None  ->  this field is NOT required. If the client
 #                            doesn't send it, it defaults to None.
 # bool = False           ->  not required either, defaults to False.
-class Todo(BaseModel):
-  id: int
+class TodoBase(BaseModel):
+
   title: str
   description: Optional[str] = None
   completed: bool = False
 
+
+class TodoCreate(TodoBase):
+  pass 
+class TodoUpdate(TodoBase):
+  pass
+
+class TodoResponse(TodoBase):
+  id : int 
+  class Config:
+    orm_mode = True 
+    
+    
+def getdb():
+  db = SessionLocal()
+  try:
+    yield db 
+  finally:
+    db.close()
+    
 
 # ---------------------------------------------------------------------------
 # READ (all) -> GET /todos
@@ -44,9 +67,10 @@ class Todo(BaseModel):
 # GET requests are for RETRIEVING data - they should never change anything.
 # This just returns the entire "todos" list as-is. FastAPI automatically
 # converts the Python list of dicts into a JSON array in the response.
-@app.get("/todos")
-def get_todos():
-  return todos
+@app.get("/todos" , response_model = list[TodoResponse])
+def get_todos(db : session = Depends(get_db)):
+  todos = db.query(TodoModel).all()
+  return todos  
 
 
 # ---------------------------------------------------------------------------
