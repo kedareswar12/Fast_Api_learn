@@ -25,7 +25,7 @@ else you can use the uvcorn to run this fast api application
 this will re run your project file 
 
 
-else use uvcorn <foldername>.<filename>:app --reload
+else use uvicorn <foldername>.<filename>:app --reload
 
 
 """
